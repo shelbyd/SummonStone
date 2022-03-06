@@ -3,5 +3,6 @@
 ## Notes: Make summoning great.
 ## Version: 0.1
 ## DefaultState: enabled
+## SavedVariables: SummonStone_Saved
 
 main.lua
