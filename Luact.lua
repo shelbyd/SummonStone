@@ -3,28 +3,33 @@ Luact = {}
 Luact.frameCache = {}
 
 Luact.Render = function(component, parent)
-    for i, child in ipairs({ parent:GetChildren() }) do
-        if child.__luact_owned then
-            Luact._DetachAndCacheFrame(child)
-        end
+    for i, child in ipairs({parent:GetChildren()}) do
+        Luact._DetachAndCacheLuactFrame(child)
     end
     local toRender = component()
-    local frame = toRender(parent)
-    frame.__luact_owned = true
+    if toRender == nil then
+        return
+    end
+
+    toRender(parent)
 end
 
-Luact._DetachAndCacheFrame = function(frame)
+Luact._DetachAndCacheLuactFrame = function(frame)
+    if not frame.__luact_owned then
+        return
+    end
+
     frame:SetParent(nil)
     frame:Hide()
     table.insert(Luact.frameCache, frame)
 
-    for i, child in ipairs({ frame:GetChildren() }) do
-        Luact._DetachAndCacheFrame(child)
+    for i, child in ipairs({frame:GetChildren()}) do
+        Luact._DetachAndCacheLuactFrame(child)
     end
 end
 
 Luact._GetOrCreateFrame = function(type, id, parent, inherit)
-    for i,frame in ipairs(Luact.frameCache) do
+    for i, frame in ipairs(Luact.frameCache) do
         local sameType = frame:GetObjectType() == type
         local sameName = frame:GetName() == id
         local sameInherit = frame.__luact_inherited == inherit
@@ -37,7 +42,9 @@ Luact._GetOrCreateFrame = function(type, id, parent, inherit)
         end
     end
 
-    return CreateFrame(type, id, parent, inherit), true
+    local frame = CreateFrame(type, id, parent, inherit)
+    frame.__luact_owned = true
+    return frame, true
 end
 
 Luact.Frame = function(props, children)
@@ -66,7 +73,7 @@ Luact.Frame = function(props, children)
             frame:SetResizable(false)
         end
 
-        for i,child in ipairs(children) do
+        for i, child in ipairs(children) do
             child(frame)
         end
 
@@ -90,7 +97,7 @@ Luact.Button = function(props)
             button:SetPushedTexture(tex.pushed or tex.normal)
         end
 
-        for name,fn in pairs(props.events) do
+        for name, fn in pairs(props.events) do
             button:SetScript(name, fn)
         end
 
