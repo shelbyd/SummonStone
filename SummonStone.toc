@@ -5,4 +5,5 @@
 ## DefaultState: enabled
 ## SavedVariables: SummonStone_Saved
 
+Luact.lua
 main.lua
