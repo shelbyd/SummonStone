@@ -1,5 +1,7 @@
-## Interface: 90200
+## Interface: 70100
 ## Title: SummonStone
 ## Notes: Make summoning great.
-SummonStone.lua
-SummonStone.xml
+## Version: 0.1
+## DefaultState: enabled
+
+main.lua
