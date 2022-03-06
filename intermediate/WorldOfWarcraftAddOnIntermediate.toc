@@ -1,5 +1,0 @@
-## Interface: 60000
-## Title: Hello, Intermediate world!
-## Notes: My first AddOn
-WorldOfWarcraftAddOnIntermediate.lua
-WorldOfWarcraftAddOnIntermediate.xml
