@@ -17,7 +17,6 @@ local EventsTriggeringRecalc = {
     "PLAYER_REGEN_DISABLED", -- Enter combat
     "PLAYER_REGEN_ENABLED", -- Leave combat
     "GROUP_ROSTER_UPDATE",
-    "CURSOR_UPDATE",
 };
 
 local EventFrame = CreateFrame("Frame", "SummonStone_EventFrame")
@@ -27,11 +26,6 @@ for _index, event in pairs(EventsTriggeringRecalc) do
 end
 
 EventFrame:SetScript("OnEvent", function(self, event, ...)
-    if event == "CURSOR_UPDATE" then
-        SummonStone:OnCursorUpdate()
-        return
-    end
-
     -- Render()
 end)
 
@@ -96,17 +90,6 @@ function RaidersNeedingSummon()
     return needsSummoned
 end
 
-function DoesRaiderNNeedSummon(n)
-    local playerZone = GetZoneText()
-    local raiderZone = select(7, GetRaidRosterInfo(n))
-    local name = select(1, GetRaidRosterInfo(n))
-    if playerZone == raiderZone then
-        return false
-    else
-        return true
-    end
-end
-
 function RenderSummonNeeded(raiderIndex, parent)
     local name = select(1, GetRaidRosterInfo(raiderIndex))
     SummonStone:Print(GetRaidRosterInfo(raiderIndex))
@@ -124,26 +107,31 @@ function MaybeShowTargetButton()
     if InTargetButtonHideDelay then
         return
     end
-
     if IsInCombat() then
         return HideTargetButton()
     end
+
+    local summonTarget = GetSummonTarget()
+    if summonTarget == nil then
+        return HideTargetButton()
+    end
+    if IsCurrentlyTargettingRaider(summonTarget) then
+        return HideTargetButton()
+    end
+
     if IsMousingOverMeetingStone() then
-        return ShowTargetButtonAtMouse()
+        return ShowTargetButtonAtMouse(summonTarget)
     end
     if GetMouseFocus():GetName() == TargetButtonName then
-        return ShowTargetButtonAtMouse()
+        return ShowTargetButtonAtMouse(summonTarget)
     end
 
     return HideTargetButton()
 end
 
-function SummonStone:OnCursorUpdate()
-    MaybeShowTargetButton()
-end
-
 local TargetButton = CreateFrame("Button", TargetButtonName, UIParent, "GameMenuButtonTemplate,SecureActionButtonTemplate")
 TargetButton:Hide()
+TargetButton:SetAttribute("type", "macro")
 TargetButton:SetScript("OnLeave", function()
     -- Give game a few frames to update tooltip text
     InTargetButtonHideDelay = true
@@ -152,6 +140,10 @@ TargetButton:SetScript("OnLeave", function()
         MaybeShowTargetButton()
     end)
 end)
+
+TargetButton:RegisterEvent("CURSOR_UPDATE")
+TargetButton:RegisterEvent("PLAYER_TARGET_CHANGED")
+TargetButton:SetScript("OnEvent", MaybeShowTargetButton)
 
 local TooltipShown = false
 GameTooltip:HookScript("OnUpdate", function(tooltip, e)
@@ -170,20 +162,44 @@ function IsMousingOverMeetingStone()
     return GetMouseFocus() == WorldFrame and GameTooltipTextLeft1:GetText() == "Meeting Stone"
 end
 
-function ShowTargetButtonAtMouse()
-    if TargetButton:IsShown() then return end
+function ShowTargetButtonAtMouse(raiderIndex)
+    if not TargetButton:IsShown() then
+        TargetButton:Show()
+        local scale = TargetButton:GetEffectiveScale()
+        local x, y = GetCursorPosition()
+        TargetButton:SetPoint("CENTER", nil, "BOTTOMLEFT", x/scale, y/scale);
+    end
 
-    TargetButton:Show()
-    TargetButton:SetAttribute("type", "target")
-    TargetButton:SetAttribute("unit", "player") 
-
-    TargetButton:SetText("Target player")
-
-    local scale = TargetButton:GetEffectiveScale()
-    local x, y = GetCursorPosition()
-    TargetButton:SetPoint("CENTER", nil, "BOTTOMLEFT", x/scale, y/scale);
+    local name = select(1, GetRaidRosterInfo(raiderIndex))
+    TargetButton:SetAttribute("macrotext", "/target " .. name)
+    TargetButton:SetText("Target " .. name)
+    TargetButton:SetWidth(TargetButton:GetTextWidth() + 16)
 end
 
 function HideTargetButton()
     TargetButton:Hide()
+end
+
+function GetSummonTarget()
+    for i = 1, GetNumGroupMembers() do
+        if DoesRaiderNNeedSummon(i) then
+            return i
+        end
+    end
+    return nil
+end
+
+function DoesRaiderNNeedSummon(n)
+    local playerZone = GetZoneText()
+    local raiderZone = select(7, GetRaidRosterInfo(n))
+    if playerZone == raiderZone then
+        return false
+    else
+        return true
+    end
+end
+
+function IsCurrentlyTargettingRaider(raiderIndex)
+    local name = select(1, GetRaidRosterInfo(raiderIndex))
+    return UnitIsUnit("target", name)
 end
