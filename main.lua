@@ -97,8 +97,6 @@ function GetSummonTarget()
     return nil
 end
 
-local PENDING_INCOMING_SUMMON = 1
-local ACCEPTED_INCOMING_SUMMON = 2
 function DoesRaiderNNeedSummon(n)
     local playerZone = GetZoneText()
     local raiderZone = select(7, GetRaidRosterInfo(n))
@@ -107,9 +105,7 @@ function DoesRaiderNNeedSummon(n)
     end
 
     local raiderName = select(1, GetRaidRosterInfo(n))
-    local summonStatus = C_IncomingSummon.IncomingSummonStatus(raiderName)
-    local alreadySummoned = summonStatus == PENDING_INCOMING_SUMMON or summonStatus == ACCEPTED_INCOMING_SUMMON
-    if alreadySummoned then
+    if C_IncomingSummon.HasIncomingSummon(raiderName) then
         return false
     end
 
