@@ -23,7 +23,7 @@ function MaybeShowTargetButton()
     if IsMousingOverMeetingStone() then
         return ShowTargetButtonAtMouse(summonTarget)
     end
-    if GetMouseFocus():GetName() == TargetButtonName then
+    if GetMouseFocus() ~= nil and GetMouseFocus():GetName() == TargetButtonName then
         return ShowTargetButtonAtMouse(summonTarget)
     end
 
