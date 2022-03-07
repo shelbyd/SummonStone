@@ -34,7 +34,8 @@ function IsInCombat()
     return UnitAffectingCombat("player")
 end
 
-local TargetButton = CreateFrame("Button", TargetButtonName, UIParent, "GameMenuButtonTemplate,SecureActionButtonTemplate")
+local TargetButton = CreateFrame("Button", TargetButtonName, UIParent,
+    "GameMenuButtonTemplate,SecureActionButtonTemplate")
 TargetButton:Hide()
 TargetButton:SetAttribute("type", "macro")
 TargetButton:SetScript("OnLeave", function()
@@ -61,7 +62,9 @@ GameTooltip:HookScript("OnHide", function(tooltip, e)
 end)
 
 function IsMousingOverMeetingStone()
-    if not TooltipShown then return false end
+    if not TooltipShown then
+        return false
+    end
 
     -- TODO(shelbyd): Deal with localized Meeting Stone text
     return GetMouseFocus() == WorldFrame and GameTooltipTextLeft1:GetText() == "Meeting Stone"
@@ -72,7 +75,7 @@ function ShowTargetButtonAtMouse(raiderIndex)
         TargetButton:Show()
         local scale = TargetButton:GetEffectiveScale()
         local x, y = GetCursorPosition()
-        TargetButton:SetPoint("CENTER", nil, "BOTTOMLEFT", x/scale, y/scale);
+        TargetButton:SetPoint("CENTER", nil, "BOTTOMLEFT", x / scale, y / scale);
     end
 
     local name = select(1, GetRaidRosterInfo(raiderIndex))
@@ -94,14 +97,23 @@ function GetSummonTarget()
     return nil
 end
 
+local PENDING_INCOMING_SUMMON = 1
+local ACCEPTED_INCOMING_SUMMON = 2
 function DoesRaiderNNeedSummon(n)
     local playerZone = GetZoneText()
     local raiderZone = select(7, GetRaidRosterInfo(n))
     if playerZone == raiderZone then
         return false
-    else
-        return true
     end
+
+    local raiderName = select(1, GetRaidRosterInfo(n))
+    local summonStatus = C_IncomingSummon.IncomingSummonStatus(raiderName)
+    local alreadySummoned = summonStatus == PENDING_INCOMING_SUMMON or summonStatus == ACCEPTED_INCOMING_SUMMON
+    if alreadySummoned then
+        return false
+    end
+
+    return true
 end
 
 function IsCurrentlyTargettingRaider(raiderIndex)
