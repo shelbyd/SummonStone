@@ -12,9 +12,13 @@ function SummonStone:OnSlashCommand(input)
     Render()
 end
 
-local EventsTriggeringRecalc = {"PLAYER_ENTERING_WORLD", "PLAYER_REGEN_DISABLED", -- Enter combat
-"PLAYER_REGEN_ENABLED", -- Leave combat
-"GROUP_ROSTER_UPDATE"};
+local EventsTriggeringRecalc = {
+    "PLAYER_ENTERING_WORLD",
+    "PLAYER_REGEN_DISABLED", -- Enter combat
+    "PLAYER_REGEN_ENABLED", -- Leave combat
+    "GROUP_ROSTER_UPDATE",
+    "CURSOR_UPDATE",
+};
 
 local EventFrame = CreateFrame("Frame", "SummonStone_EventFrame")
 
@@ -23,7 +27,12 @@ for _index, event in pairs(EventsTriggeringRecalc) do
 end
 
 EventFrame:SetScript("OnEvent", function(self, event, ...)
-    Render()
+    if event == "CURSOR_UPDATE" then
+        SummonStone:OnCursorUpdate()
+        return
+    end
+
+    -- Render()
 end)
 
 local CurrentSummonFrame = nil
@@ -40,7 +49,7 @@ function Render()
     if not ShouldRender then
         return
     end
-    if UnitAffectingCombat("player") then
+    if IsInCombat() then
         return
     end
 
@@ -69,11 +78,12 @@ function Render()
     CurrentSummonFrame:AddChild(heading)
 
     for i, raiderIndex in ipairs(needSummon) do
-        local name = select(1, GetRaidRosterInfo(raiderIndex))
-        local label = AceGUI:Create("Label")
-        label:SetText(name)
-        CurrentSummonFrame:AddChild(label)
+        RenderSummonNeeded(raiderIndex, CurrentSummonFrame)
     end
+end
+
+function IsInCombat()
+    return UnitAffectingCombat("player")
 end
 
 function RaidersNeedingSummon()
@@ -95,4 +105,85 @@ function DoesRaiderNNeedSummon(n)
     else
         return true
     end
+end
+
+function RenderSummonNeeded(raiderIndex, parent)
+    local name = select(1, GetRaidRosterInfo(raiderIndex))
+    SummonStone:Print(GetRaidRosterInfo(raiderIndex))
+
+    local label = AceGUI:Create("Label")
+    label:SetText(name)
+    label:SetRelativeWidth(1)
+    parent:AddChild(label)
+end
+
+local TargetButtonName = "SummonStone_TargetButton";
+
+local InTargetButtonHideDelay = false
+function MaybeShowTargetButton()
+    if InTargetButtonHideDelay then
+        return
+    end
+
+    if IsInCombat() then
+        return HideTargetButton()
+    end
+    if IsMousingOverMeetingStone() then
+        return ShowTargetButtonAtMouse()
+    end
+    if GetMouseFocus():GetName() == TargetButtonName then
+        return ShowTargetButtonAtMouse()
+    end
+
+    return HideTargetButton()
+end
+
+function SummonStone:OnCursorUpdate()
+    MaybeShowTargetButton()
+end
+
+local TargetButton = CreateFrame("Button", TargetButtonName, UIParent, "GameMenuButtonTemplate,SecureActionButtonTemplate")
+TargetButton:Hide()
+TargetButton:SetScript("OnLeave", function()
+    -- Give game a few frames to update tooltip text
+    InTargetButtonHideDelay = true
+    C_Timer.After(0.1, function()
+        InTargetButtonHideDelay = false
+        MaybeShowTargetButton()
+    end)
+end)
+
+local TooltipShown = false
+GameTooltip:HookScript("OnUpdate", function(tooltip, e)
+    TooltipShown = true
+    MaybeShowTargetButton()
+end)
+GameTooltip:HookScript("OnHide", function(tooltip, e)
+    TooltipShown = false
+    MaybeShowTargetButton()
+end)
+
+function IsMousingOverMeetingStone()
+    if not TooltipShown then return false end
+
+    -- TODO(shelbyd): Deal with localized Meeting Stone text
+    return GetMouseFocus() == WorldFrame and GameTooltipTextLeft1:GetText() == "Meeting Stone"
+end
+
+function ShowTargetButtonAtMouse()
+    if TargetButton:IsShown() then return end
+
+    TargetButton:Show()
+    TargetButton:SetAttribute("type", "target")
+    TargetButton:SetAttribute("unit", "player") 
+
+    TargetButton:SetText("Target player")
+
+    local scale = TargetButton:GetEffectiveScale()
+    local x, y = GetCursorPosition()
+    TargetButton:SetPoint("CENTER", nil, "BOTTOMLEFT", x/scale, y/scale);
+end
+
+function HideTargetButton()
+    TargetButton:Hide()
 end
