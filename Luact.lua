@@ -38,24 +38,23 @@ Luact._GetOrCreateFrame = function(type, id, parent, inherit)
             local frame = table.remove(Luact.frameCache, i)
             frame:SetParent(parent)
             frame:Show()
-            return frame, false
+            return frame
         end
     end
 
     local frame = CreateFrame(type, id, parent, inherit)
     frame.__luact_owned = true
-    return frame, true
+    return frame
 end
 
 Luact.Frame = function(props, children)
     return function(parent)
-        local frame, created = Luact._GetOrCreateFrame("Frame", props.id, parent, props.inherit)
+        local frame = Luact._GetOrCreateFrame("Frame", props.id, parent, props.inherit)
         frame.__luact_inherited = props.inherit
 
-        if created then
-            if props.size ~= nil then
-                frame:SetSize(props.size[1], props.size[2])
-            end
+        local clearPoints = props.clearPoints == nil and true or props.clearPoints
+        if clearPoints then
+            frame:SetSize(props.size[1], props.size[2])
             frame:SetPoint(props.point, parent, props.point)
         end
 
@@ -73,8 +72,19 @@ Luact.Frame = function(props, children)
             frame:SetResizable(false)
         end
 
-        for i, child in ipairs(children) do
-            child(frame)
+        local previousChildInList = nil
+        for i, childFn in ipairs(children) do
+            local child = childFn(frame)
+            if child ~= nil then
+                if child:GetNumPoints() == 0 then
+                    if previousChildInList == nil then
+                        child:SetPoint("TOP", frame, "TOP")
+                    else
+                        child:SetPoint("TOP", previousChildInList, "BOTTOM")
+                    end
+                    previousChildInList = child
+                end
+            end
         end
 
         return frame
@@ -102,5 +112,14 @@ Luact.Button = function(props)
         end
 
         return button
+    end
+end
+
+Luact.Text = function(content, props)
+    return function(parent)
+        local fontString = parent:CreateFontString(nil, "OVERLAY")
+        fontString:SetFontObject(props.fontObject or "GameFontNormal")
+        fontString:SetPoint(props.point(parent))
+        fontString:SetText(content)
     end
 end
