@@ -52,8 +52,14 @@ TargetButton:RegisterEvent("PLAYER_TARGET_CHANGED")
 TargetButton:SetScript("OnEvent", MaybeShowTargetButton)
 
 local TooltipShown = false
+
+local TooltipCheckDelay = 0.1
+local NextTooltipCheck = GetTime()
 GameTooltip:HookScript("OnUpdate", function(tooltip, e)
     TooltipShown = true
+    if NextTooltipCheck > GetTime() then return end
+    NextTooltipCheck = GetTime() + TooltipCheckDelay
+
     MaybeShowTargetButton()
 end)
 GameTooltip:HookScript("OnHide", function(tooltip, e)
@@ -66,8 +72,10 @@ function IsMousingOverMeetingStone()
         return false
     end
 
+    if GetMouseFocus() ~= WorldFrame then return false end
+    local tooltip = GameTooltipTextLeft1:GetText()
     -- TODO(shelbyd): Deal with localized Meeting Stone text
-    return GetMouseFocus() == WorldFrame and GameTooltipTextLeft1:GetText() == "Meeting Stone"
+    return tooltip == "Meeting Stone" or tooltip == "Summoning Portal"
 end
 
 function ShowTargetButtonAtMouse(raiderIndex)
@@ -88,31 +96,90 @@ function HideTargetButton()
     TargetButton:Hide()
 end
 
-function GetSummonTarget()
-    for i = 1, GetNumGroupMembers() do
-        if DoesRaiderNNeedSummon(i) then
-            return i
-        end
-    end
-    return nil
+function IsCurrentlyTargettingRaider(raiderIndex)
+    local name = select(1, GetRaidRosterInfo(raiderIndex))
+    return UnitIsUnit("target", name)
 end
 
-function DoesRaiderNNeedSummon(n)
+function GetSummonTarget()
+    local differentZones = Filter(Raiders(), InDifferentZone)
+
+    local needsSummon = Filter(differentZones, NeedsSummon)
+    return needsSummon[1]
+end
+
+function Filter(list, callback)
+    local result = {}
+    for _, v in ipairs(list) do
+        if callback(v) then
+            table.insert(result, v)
+        end
+    end
+    return result
+end
+
+function Raiders()
+    local indices = {}
+    for i = 1, GetNumGroupMembers() do
+        if GetRaidRosterInfo(i) ~= nil then
+            table.insert(indices, i)
+        end
+    end
+    return indices
+end
+
+function InDifferentZone(raiderIndex)
     local playerZone = GetZoneText()
-    local raiderZone = select(7, GetRaidRosterInfo(n))
-    if playerZone == raiderZone then
+    local raiderZone = select(7, GetRaidRosterInfo(raiderIndex))
+
+    return playerZone ~= raiderZone
+end
+
+function NeedsSummon(raiderIndex)
+    local raiderName = select(1, GetRaidRosterInfo(raiderIndex))
+    if C_IncomingSummon.HasIncomingSummon(raiderName) then
         return false
     end
 
-    local raiderName = select(1, GetRaidRosterInfo(n))
-    if C_IncomingSummon.HasIncomingSummon(raiderName) then
+    local raiderZone = select(7, GetRaidRosterInfo(raiderIndex))
+    if raiderZone == "Offline" then
+        return false
+    end
+
+    if RaiderZoneAheadOfPlayer(raiderIndex) then
         return false
     end
 
     return true
 end
 
-function IsCurrentlyTargettingRaider(raiderIndex)
-    local name = select(1, GetRaidRosterInfo(raiderIndex))
-    return UnitIsUnit("target", name)
+local ZoneMap = {
+    {"Zereth Mortis", "Sepulcher of the First Ones"},
+    {"Zereth Mortis", "The Sepulcher of the First Ones"},
+    {"Zereth Mortis", "Eternal Watch"},
+    {"Zereth Mortis", "Immortal Hearth"},
+    {"Zereth Mortis", "Ephemeral Plains"},
+    {"Zereth Mortis", "Broker's Sting"},
+    {"Zereth Mortis", "Domination's Grasp"},
+}
+
+local PrintedZones = {}
+
+function RaiderZoneAheadOfPlayer(n)
+    local playerZone = GetZoneText()
+    local raiderZone = select(7, GetRaidRosterInfo(n))
+
+    for _, pairs in ipairs(ZoneMap) do
+        if playerZone == pairs[1] and raiderZone == pairs[2] then
+            return true
+        end
+    end
+
+    local printKey = playerZone .. " / " .. raiderZone
+    if PrintedZones[printKey] == nil then
+        SummonStone:Print("Assuming should summon to", playerZone, "from", raiderZone)
+        PrintedZones[printKey] = true
+    end
+
+    return false
 end
