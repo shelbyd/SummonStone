@@ -4,7 +4,7 @@ local AceGUI = LibStub("AceGUI-3.0")
 local TargetButtonName = "SummonStone_TargetButton";
 
 local InTargetButtonHideDelay = false
-function MaybeShowTargetButton()
+local MaybeShowTargetButton = SSUtils:Throttle(0.1, function()
     if InTargetButtonHideDelay then
         return
     end
@@ -28,7 +28,7 @@ function MaybeShowTargetButton()
     end
 
     return HideTargetButton()
-end
+end)
 
 function IsInCombat()
     return UnitAffectingCombat("player")
@@ -52,14 +52,8 @@ TargetButton:RegisterEvent("PLAYER_TARGET_CHANGED")
 TargetButton:SetScript("OnEvent", MaybeShowTargetButton)
 
 local TooltipShown = false
-
-local TooltipCheckDelay = 0.1
-local NextTooltipCheck = GetTime()
 GameTooltip:HookScript("OnUpdate", function(tooltip, e)
     TooltipShown = true
-    if NextTooltipCheck > GetTime() then return end
-    NextTooltipCheck = GetTime() + TooltipCheckDelay
-
     MaybeShowTargetButton()
 end)
 GameTooltip:HookScript("OnHide", function(tooltip, e)
@@ -101,21 +95,18 @@ function IsCurrentlyTargettingRaider(raiderIndex)
     return UnitIsUnit("target", name)
 end
 
+local SummonOrder = {}
+ -- TODO(shelbyd): Custom event for SummonOrder updated.
+
+local UpdateSummonOrder = SSUtils:Throttle(1, function()
+    local differentZones = SSUtils:Filter(Raiders(), InDifferentZone)
+
+    SummonOrder = SSUtils:Filter(differentZones, NeedsSummon)
+end)
+
 function GetSummonTarget()
-    local differentZones = Filter(Raiders(), InDifferentZone)
-
-    local needsSummon = Filter(differentZones, NeedsSummon)
-    return needsSummon[1]
-end
-
-function Filter(list, callback)
-    local result = {}
-    for _, v in ipairs(list) do
-        if callback(v) then
-            table.insert(result, v)
-        end
-    end
-    return result
+    UpdateSummonOrder()
+    return SummonOrder[1]
 end
 
 function Raiders()
@@ -183,3 +174,6 @@ function RaiderZoneAheadOfPlayer(n)
 
     return false
 end
+
+-- https://wowpedia.fandom.com/wiki/API_C_EncounterJournal.GetDungeonEntrancesForMap
+-- https://wowpedia.fandom.com/wiki/API_C_Map.GetBestMapForUnit

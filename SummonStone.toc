@@ -6,4 +6,6 @@
 ## SavedVariables: SummonStone_Saved
 
 embeds.xml
+util.lua
+
 main.lua
