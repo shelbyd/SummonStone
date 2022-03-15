@@ -99,9 +99,13 @@ local SummonOrder = {}
  -- TODO(shelbyd): Custom event for SummonOrder updated.
 
 local UpdateSummonOrder = SSUtils:Throttle(1, function()
-    local differentZones = SSUtils:Filter(Raiders(), InDifferentZone)
-
-    SummonOrder = SSUtils:Filter(differentZones, NeedsSummon)
+    local summonContext = SSUtils:Map(Raiders(), GetRaiderSummonContext)
+    local needsSummon = SSUtils:Filter(summonContext, ContextNeedsSummon)
+    local sorted = SSUtils:SortBy(needsSummon, CompareSummonPriority)
+    local justIds = SSUtils:Map(sorted, function(context)
+        return context.index
+    end)
+    SummonOrder = justIds
 end)
 
 function GetSummonTarget()
@@ -119,11 +123,11 @@ function Raiders()
     return indices
 end
 
-function InDifferentZone(raiderIndex)
+function InSameZone(raiderIndex)
     local playerZone = GetZoneText()
     local raiderZone = select(7, GetRaidRosterInfo(raiderIndex))
 
-    return playerZone ~= raiderZone
+    return playerZone == raiderZone
 end
 
 function NeedsSummon(raiderIndex)
@@ -151,6 +155,7 @@ local ZoneMap = {
     {"Zereth Mortis", "Immortal Hearth"},
     {"Zereth Mortis", "Ephemeral Plains"},
     {"Zereth Mortis", "Broker's Sting"},
+    {"Zereth Mortis", "Genesis Cradle"},
     {"Zereth Mortis", "Domination's Grasp"},
 }
 
@@ -177,3 +182,32 @@ end
 
 -- https://wowpedia.fandom.com/wiki/API_C_EncounterJournal.GetDungeonEntrancesForMap
 -- https://wowpedia.fandom.com/wiki/API_C_Map.GetBestMapForUnit
+
+function GetRaiderSummonContext(raiderIndex)
+    local raiderName = select(1, GetRaidRosterInfo(raiderIndex))
+
+    return {
+        index = raiderIndex,
+        name = raiderName,
+        isSameZoneAsPlayer = InSameZone(raiderIndex),
+        hasIncoming = C_IncomingSummon.HasIncomingSummon(raiderName),
+        currentZone = select(7, GetRaidRosterInfo(raiderIndex)),
+        aheadOfPlayer = RaiderZoneAheadOfPlayer(raiderIndex),
+    }
+end
+
+function ContextNeedsSummon(context)
+    if context.isSameZoneAsPlayer or context.hasIncoming or context.aheadOfPlayer then
+        return false
+    end
+
+    if context.currentZone == "Offline" then
+        return false
+    end
+
+    return true
+end
+
+function CompareSummonPriority(a, b)
+    return "equal"
+end
