@@ -92,6 +92,9 @@ end
 
 function IsCurrentlyTargettingRaider(raiderIndex)
     local name = select(1, GetRaidRosterInfo(raiderIndex))
+    if name == nil then
+        return false
+    end
     return UnitIsUnit("target", name)
 end
 
@@ -99,7 +102,11 @@ local SummonOrder = {}
  -- TODO(shelbyd): Custom event for SummonOrder updated.
 
 local UpdateSummonOrder = SSUtils:Throttle(1, function()
-    local summonContext = SSUtils:Map(Raiders(), GetRaiderSummonContext)
+    local targetInstance = GetTargetInstance()
+
+    local summonContext = SSUtils:Map(Raiders(), function(i)
+        return GetRaiderSummonContext(i, targetInstance)
+    end)
     local needsSummon = SSUtils:Filter(summonContext, ContextNeedsSummon)
     local sorted = SSUtils:SortBy(needsSummon, CompareSummonPriority)
     local justIds = SSUtils:Map(sorted, function(context)
@@ -111,6 +118,29 @@ end)
 function GetSummonTarget()
     UpdateSummonOrder()
     return SummonOrder[1]
+end
+
+function GetTargetInstance()
+    if IsInInstance() then
+        local instanceMapId = select(8, GetInstanceInfo())
+        return instanceMapId
+    else
+        local playerMap = C_Map.GetBestMapForUnit("player")
+        if playerMap == nil then
+            return nil
+        end
+
+        local entrances = C_EncounterJournal.GetDungeonEntrancesForMap(playerMap)
+        local sortedEntrances = SSUtils:SortByKey(entrances, function(entrance)
+            local playerPosition = C_Map.GetPlayerMapPosition(playerMap, "player")
+            local deltaVec = entrance.position
+            -- Why is :Subtract mutable and not functional?
+            deltaVec:Subtract(playerPosition)
+            return deltaVec:GetLength()
+        end)
+        local nearestEntrance = sortedEntrances[1]
+        -- TODO(shelbyd): WIP
+    end
 end
 
 function Raiders()
@@ -183,7 +213,7 @@ end
 -- https://wowpedia.fandom.com/wiki/API_C_EncounterJournal.GetDungeonEntrancesForMap
 -- https://wowpedia.fandom.com/wiki/API_C_Map.GetBestMapForUnit
 
-function GetRaiderSummonContext(raiderIndex)
+function GetRaiderSummonContext(raiderIndex, targetInstance)
     local raiderName = select(1, GetRaidRosterInfo(raiderIndex))
 
     return {

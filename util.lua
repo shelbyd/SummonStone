@@ -56,6 +56,20 @@ function SSUtils:Concat(...)
     return result
 end
 
+function SSUtils:SortByKey(list, getKey)
+    return SSUtils:SortBy(list, function(a, b)
+        local aKey = getKey(a)
+        local bKey = getKey(b)
+        if aKey == bKey then
+            return "equal"
+        elseif aKey < bKey then
+            return "less"
+        else
+            return "greater"
+        end
+    end)
+end
+
 function SSUtils:Throttle(timeBetween, fn)
     local lastCall = nil
     local scheduled = false
