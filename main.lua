@@ -66,7 +66,9 @@ function IsMousingOverMeetingStone()
         return false
     end
 
-    if GetMouseFocus() ~= WorldFrame then return false end
+    if GetMouseFocus() ~= WorldFrame then
+        return false
+    end
     local tooltip = GameTooltipTextLeft1:GetText()
     -- TODO(shelbyd): Deal with localized Meeting Stone text
     return tooltip == "Meeting Stone" or tooltip == "Summoning Portal"
@@ -98,8 +100,8 @@ function IsCurrentlyTargettingRaider(raiderIndex)
     return UnitIsUnit("target", name)
 end
 
-local SummonOrder = {}
- -- TODO(shelbyd): Custom event for SummonOrder updated.
+local SummonSet = {}
+-- TODO(shelbyd): Custom event for SummonSet updated.
 
 local UpdateSummonOrder = SSUtils:Throttle(1, function()
     local targetInstance = GetTargetInstance()
@@ -107,40 +109,53 @@ local UpdateSummonOrder = SSUtils:Throttle(1, function()
     local summonContext = SSUtils:Map(Raiders(), function(i)
         return GetRaiderSummonContext(i, targetInstance)
     end)
-    local needsSummon = SSUtils:Filter(summonContext, ContextNeedsSummon)
-    local sorted = SSUtils:SortBy(needsSummon, CompareSummonPriority)
-    local justIds = SSUtils:Map(sorted, function(context)
-        return context.index
-    end)
-    SummonOrder = justIds
+    local action = SummonAction(PlayerContext(targetInstance), summonContext)
+    if type(action) == 'table' then
+        local justIds = SSUtils:Map(action, function(context)
+            return context.index
+        end)
+        SummonSet = justIds
+    else
+        if action ~= 'done' then
+            SummonStone:Print(action)
+        end
+        SummonSet = {}
+    end
 end)
 
 function GetSummonTarget()
     UpdateSummonOrder()
-    return SummonOrder[1]
+
+    for _, raiderIndex in ipairs(SummonSet) do
+        if IsCurrentlyTargettingRaider(raiderIndex) then
+            return raiderIndex
+        end
+    end
+
+    return SummonSet[1]
 end
 
 function GetTargetInstance()
     if IsInInstance() then
-        local instanceMapId = select(8, GetInstanceInfo())
-        return instanceMapId
-    else
-        local playerMap = C_Map.GetBestMapForUnit("player")
-        if playerMap == nil then
-            return nil
-        end
-
-        local entrances = C_EncounterJournal.GetDungeonEntrancesForMap(playerMap)
-        local sortedEntrances = SSUtils:SortByKey(entrances, function(entrance)
-            local playerPosition = C_Map.GetPlayerMapPosition(playerMap, "player")
-            local deltaVec = entrance.position
-            -- Why is :Subtract mutable and not functional?
-            deltaVec:Subtract(playerPosition)
-            return deltaVec:GetLength()
-        end)
-        local nearestEntrance = sortedEntrances[1]
-        -- TODO(shelbyd): WIP
+        local name = select(1, GetInstanceInfo())
+        return name
     end
+
+    local playerMap = C_Map.GetBestMapForUnit("player")
+    if playerMap == nil then
+        return nil
+    end
+
+    local entrances = C_EncounterJournal.GetDungeonEntrancesForMap(playerMap)
+    local sortedEntrances = SSUtils:SortByKey(entrances, function(entrance)
+        local playerPosition = C_Map.GetPlayerMapPosition(playerMap, "player")
+        local deltaVec = entrance.position
+        -- Why is :Subtract mutable and not functional?
+        deltaVec:Subtract(playerPosition)
+        return deltaVec:GetLength()
+    end)
+    local nearestEntrance = sortedEntrances[1]
+    return nearestEntrance.name
 end
 
 function Raiders()
@@ -160,84 +175,118 @@ function InSameZone(raiderIndex)
     return playerZone == raiderZone
 end
 
-function NeedsSummon(raiderIndex)
-    local raiderName = select(1, GetRaidRosterInfo(raiderIndex))
-    if C_IncomingSummon.HasIncomingSummon(raiderName) then
-        return false
-    end
-
-    local raiderZone = select(7, GetRaidRosterInfo(raiderIndex))
-    if raiderZone == "Offline" then
-        return false
-    end
-
-    if RaiderZoneAheadOfPlayer(raiderIndex) then
-        return false
-    end
-
-    return true
-end
-
-local ZoneMap = {
-    {"Zereth Mortis", "Sepulcher of the First Ones"},
-    {"Zereth Mortis", "The Sepulcher of the First Ones"},
-    {"Zereth Mortis", "Eternal Watch"},
-    {"Zereth Mortis", "Immortal Hearth"},
-    {"Zereth Mortis", "Ephemeral Plains"},
-    {"Zereth Mortis", "Broker's Sting"},
-    {"Zereth Mortis", "Genesis Cradle"},
-    {"Zereth Mortis", "Domination's Grasp"},
-}
-
-local PrintedZones = {}
-
-function RaiderZoneAheadOfPlayer(n)
-    local playerZone = GetZoneText()
-    local raiderZone = select(7, GetRaidRosterInfo(n))
-
-    for _, pairs in ipairs(ZoneMap) do
-        if playerZone == pairs[1] and raiderZone == pairs[2] then
-            return true
-        end
-    end
-
-    local printKey = playerZone .. " / " .. raiderZone
-    if PrintedZones[printKey] == nil then
-        SummonStone:Print("Assuming should summon to", playerZone, "from", raiderZone)
-        PrintedZones[printKey] = true
-    end
-
-    return false
-end
-
--- https://wowpedia.fandom.com/wiki/API_C_EncounterJournal.GetDungeonEntrancesForMap
--- https://wowpedia.fandom.com/wiki/API_C_Map.GetBestMapForUnit
-
 function GetRaiderSummonContext(raiderIndex, targetInstance)
     local raiderName = select(1, GetRaidRosterInfo(raiderIndex))
 
+    local sameZoneAsPlayer = InSameZone(raiderIndex)
+    local inTargetDungeon = MapIsInInstance(C_Map.GetBestMapForUnit(raiderName), targetInstance)
+    local _, englishClassName = UnitClass(raiderName)
+
     return {
         index = raiderIndex,
-        name = raiderName,
-        isSameZoneAsPlayer = InSameZone(raiderIndex),
+        sameZoneAsPlayer = sameZoneAsPlayer,
+        inTargetDungeon = inTargetDungeon,
+        here = sameZoneAsPlayer or inTargetDungeon,
         hasIncoming = C_IncomingSummon.HasIncomingSummon(raiderName),
-        currentZone = select(7, GetRaidRosterInfo(raiderIndex)),
-        aheadOfPlayer = RaiderZoneAheadOfPlayer(raiderIndex),
+        isWarlock = englishClassName == "WARLOCK"
     }
 end
 
-function ContextNeedsSummon(context)
-    if context.isSameZoneAsPlayer or context.hasIncoming or context.aheadOfPlayer then
+function PlayerContext(targetInstance)
+    return {
+        inTargetDungeon = IsInInstance()
+    }
+end
+
+function MapIsInInstance(mapId, instance)
+    if mapId == 0 or mapId == nil then
         return false
     end
 
-    if context.currentZone == "Offline" then
-        return false
-    end
+    local info = C_Map.GetMapInfo(mapId)
+    return info.name == instance or MapIsInInstance(info.parentMapID, instance)
+end
 
+local function l(key)
+    return function(v)
+        if v[key] == nil then
+            error("Attempted to access missing value: " .. key)
+        end
+        return v[key]
+    end
+end
+
+local function lNot(fn)
+    return function(v)
+        return not fn(v)
+    end
+end
+
+local function lAnd(fn1, fn2)
+    return function(v)
+        return fn1(v) and fn2(v)
+    end
+end
+
+local function All(list, pred)
+    for _, v in ipairs(list) do
+        if not pred(v) then
+            return false
+        end
+    end
     return true
 end
 
-function CompareSummonPriority(a, b)
-    return "equal"
+local function Any(list, pred)
+    for _, v in ipairs(list) do
+        if pred(v) then
+            return true
+        end
+    end
+    return false
+end
+
+function SummonAction(player, raiders)
+    if All(raiders, l('sameZoneAsPlayer')) then
+        return 'done'
+    end
+
+    if All(raiders, l('here')) and not player.inTargetDungeon then
+        return 'go_in_dungeon'
+    end
+
+    local warlockInParty = Any(raiders, l('isWarlock')) or player.isWarlock
+    if not warlockInParty then
+        return DoSummon(raiders, lNot(l('here'))) or 'wait'
+    end
+
+    local warlockHere = Any(raiders, lAnd(l('isWarlock'), l('here'))) or (player.isWarlock)
+    if not warlockHere then
+        local summon = DoSummon(raiders, l('isWarlock'))
+        if summon ~= nil then
+            return summon
+        end
+    end
+
+    local others_here = table.getn(SSUtils:Filter(raiders, l('here')))
+    if others_here < 2 then
+        return DoSummon(raiders, l('!here')) or 'wait'
+    end
+
+    if not player.inTargetDungeon then
+        return 'go_in_dungeon'
+    end
+
+    return DoSummon(raiders, lNot(l('inTargetDungeon'))) or DoSummon(raiders, lNot(l('sameZoneAsPlayer'))) or 'wait'
+end
+
+function DoSummon(raiders, fn)
+    local summonable = SSUtils:Filter(raiders, function(r)
+        return not r.hasIncoming and fn(r)
+    end)
+    if table.getn(summonable) == 0 then
+        return nil
+    else
+        return summonable
+    end
 end
