@@ -155,7 +155,7 @@ function GetTargetInstance()
         return deltaVec:GetLength()
     end)
     local nearestEntrance = sortedEntrances[1]
-    return nearestEntrance.name
+    return nearestEntrance and nearestEntrance.name
 end
 
 function Raiders()
